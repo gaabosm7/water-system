@@ -6,173 +6,120 @@
     <title>نظام مياه الجعودية</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root {
-            --primary-color: #007bff;
-            --dark-bg: #1a1a1a;
-            --sidebar-width: 250px;
-            --sidebar-collapsed-width: 70px;
-        }
+        :root { --blue: #3498db; --green: #2ecc71; --red: #e74c3c; --orange: #f39c12; --dark: #2c3e50; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f8f9fa; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* القائمة الجانبية - لابتوب */
+        .sidebar { background: var(--dark); width: 250px; transition: 0.3s; display: flex; flex-direction: column; color: white; position: fixed; right: 0; height: 100vh; z-index: 1000; }
+        .sidebar.collapsed { width: 70px; }
+        .menu-btn { padding: 20px; cursor: pointer; text-align: center; color: var(--blue); font-size: 1.5rem; border-bottom: 1px solid #3e4f5f; }
+        .nav-item { padding: 15px 20px; display: flex; align-items: center; color: #bdc3c7; cursor: pointer; text-decoration: none; white-space: nowrap; overflow: hidden; }
+        .nav-item:hover { background: #34495e; color: white; }
+        .nav-item i { min-width: 35px; font-size: 1.2rem; }
+        .collapsed .nav-item span { display: none; }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            background-color: #f0f2f5;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
+        /* المحتوى الرئيسي */
+        main { margin-right: 250px; padding: 20px; transition: 0.3s; flex: 1; padding-bottom: 80px; }
+        .sidebar.collapsed + main { margin-right: 70px; }
 
-        /* الهيدر العلوي - يظهر في الجوال والكمبيوتر */
-        header {
-            background: var(--primary-color);
-            color: white;
-            padding: 15px;
-            text-align: center;
-            font-size: 1.2rem;
-            font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            z-index: 1000;
-        }
+        /* كروت الإحصائيات (مثل الصورة) */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .stat-card { padding: 20px; border-radius: 12px; color: white; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+        .stat-card .label { font-size: 1.1rem; font-weight: 500; margin-bottom: 10px; display: block; }
+        .stat-card .value { font-size: 1.8rem; font-weight: bold; }
 
-        /* الحاوية الرئيسية */
-        .wrapper {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
+        /* دليل المشتركين */
+        .data-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #f8f9fa; padding-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+        .search-box { position: relative; width: 100%; max-width: 300px; }
+        .search-box input { width: 100%; padding: 8px 35px 8px 10px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
+        .search-box i { position: absolute; right: 10px; top: 10px; color: #999; }
 
-        /* القائمة الجانبية (للكمبيوتر فقط) */
-        .sidebar {
-            background: var(--dark-bg);
-            color: white;
-            width: var(--sidebar-width);
-            transition: all 0.3s;
-            display: flex;
-            flex-direction: column;
-            padding-top: 20px;
-        }
+        table { width: 100%; border-collapse: collapse; }
+        th { color: #888; padding: 12px; border-bottom: 2px solid #f8f9fa; }
+        td { padding: 12px; text-align: center; border-bottom: 1px solid #f1f1f1; }
+        .badge-red { background: #fdedec; color: #e74c3c; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
 
-        .sidebar.collapsed { width: var(--sidebar-collapsed-width); }
+        /* القائمة السفلية - جوال */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: white; display: none; justify-content: space-around; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; }
+        .bottom-item { display: flex; flex-direction: column; align-items: center; color: #7f8c8d; font-size: 0.75rem; cursor: pointer; }
+        .bottom-item i { font-size: 1.4rem; margin-bottom: 3px; }
 
-        .nav-item {
-            padding: 15px 20px;
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            transition: 0.2s;
-            color: #ccc;
-            text-decoration: none;
-        }
-
-        .nav-item:hover { background: #333; color: white; }
-        .nav-item i { font-size: 1.4rem; min-width: 40px; text-align: center; }
-        .nav-item span { font-size: 1rem; white-space: nowrap; opacity: 1; transition: 0.3s; }
-        .collapsed .nav-item span { opacity: 0; width: 0; visibility: hidden; }
-
-        /* منطقة المحتوى */
-        main {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            padding-bottom: 80px; /* مساحة للقائمة السفلية في الجوال */
-        }
-
-        /* القائمة السفلية (للجوال فقط) */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-            background: white;
-            display: none; /* مخفية في الكمبيوتر */
-            justify-content: space-around;
-            padding: 10px 0;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-            z-index: 1000;
-        }
-
-        .bottom-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: #555;
-            cursor: pointer;
-            font-size: 0.8rem;
-            flex: 1;
-        }
-
-        .bottom-item i { font-size: 1.5rem; margin-bottom: 3px; }
-        .bottom-item.active { color: var(--primary-color); }
-        .bottom-item span { display: none; } /* مخفية افتراضياً */
-        .show-labels span { display: block; }
-
-        /* الإعدادات المتجاوبة */
         @media (max-width: 768px) {
-            .sidebar { display: none; } /* إخفاء الجانبية في الجوال */
-            .bottom-nav { display: flex; } /* إظهار السفلية في الجوال */
+            .sidebar { display: none; }
+            main { margin-right: 0 !important; }
+            .bottom-nav { display: flex; }
         }
-
-        /* جداول البيانات */
-        .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
-        th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: center; }
-        th { background: #f8f9fa; }
     </style>
 </head>
 <body>
 
-    <header>🌊 مياه الجعودية</header>
+    <nav class="sidebar" id="sidebar">
+        <div class="menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></div>
+        <div class="nav-item" onclick="loadDashboard()"><i class="fas fa-home"></i><span>الرئيسية</span></div>
+        <div class="nav-item" onclick="showUsersReport()"><i class="fas fa-tasks"></i><span>العمليات</span></div>
+        <div class="nav-item" onclick="loadExpenses()"><i class="fas fa-wallet"></i><span>المصروفات</span></div>
+    </nav>
 
-    <div class="wrapper">
-        <nav class="sidebar" id="sidebar">
-            <div class="nav-item" onclick="toggleSidebar()">
-                <i class="fas fa-cog"></i> <span>الإعدادات</span>
-            </div>
-            <div class="nav-item" onclick="loadDashboard()"><i class="fas fa-home"></i> <span>الرئيسية</span></div>
-            <div class="nav-item" onclick="loadCustomers()"><i class="fas fa-users"></i> <span>المشتركين</span></div>
-            <div class="nav-item" onclick="loadMeters()"><i class="fas fa-tachometer-alt"></i> <span>العدادات</span></div>
-            <div class="nav-item" onclick="showUsersReport()"><i class="fas fa-file-invoice"></i> <span>العمليات</span></div>
-            <div class="nav-item" onclick="loadExpenses()"><i class="fas fa-wallet"></i> <span>المصروفات</span></div>
-        </nav>
-
-        <main id="content">
-            <div class="card">جاري التحميل...</div>
+    <main id="content">
         </main>
-    </div>
 
-    <nav class="bottom-nav" id="bottomNav">
-        <div class="bottom-item" onclick="loadDashboard()"><i class="fas fa-home"></i><span>الرئيسية</span></div>
-        <div class="bottom-item" onclick="loadCustomers()"><i class="fas fa-users"></i><span>المشتركين</span></div>
-        <div class="bottom-item" onclick="showUsersReport()"><i class="fas fa-exchange-alt"></i><span>العمليات</span></div>
-        <div class="bottom-item" onclick="toggleLabels()"><i class="fas fa-cog"></i><span>المزيد</span></div>
+    <nav class="bottom-nav">
+        <div class="bottom-item" onclick="loadDashboard()"><i class="fas fa-home"></i>الرئيسية</div>
+        <div class="bottom-item" onclick="showUsersReport()"><i class="fas fa-exchange-alt"></i>العمليات</div>
+        <div class="bottom-item" onclick="loadExpenses()"><i class="fas fa-wallet"></i>المصاريف</div>
     </nav>
 
     <script>
-        // ميزة إظهار وإخفاء الأسماء في الكمبيوتر
-        function toggleSidebar() {
-            document.getElementById('sidebar').classList.toggle('collapsed');
-        }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
-        // ميزة إظهار وإخفاء الأسماء في الجوال (من الترس)
-        function toggleLabels() {
-            document.getElementById('bottomNav').classList.toggle('show-labels');
-        }
-
-        // دالة تحميل لوحة التحكم (مثال)
         function loadDashboard() {
-            fetch('/dashboard/')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('content').innerHTML = `
-                    <div class="card">
-                        <h3>مرحباً بك في نظام مياه الجعودية 💧</h3>
-                        <p>إجمالي الصندوق: <strong>${data.box_balance} ريال</strong></p>
-                        <p>إجمالي الديون: <strong style="color:red">${data.total_debts} ريال</strong></p>
-                    </div>
-                `;
+            fetch('/dashboard/').then(r => r.json()).then(stats => {
+                fetch('/customers/').then(r => r.json()).then(customers => {
+                    renderUI(stats, customers);
+                });
             });
         }
 
-        // سيتم إضافة باقي الدوال (loadCustomers, showUsersReport...) هنا كما في الكود السابق
+        function renderUI(stats, customers) {
+            let html = `
+                <h2 style="color:var(--blue); text-align:center;">نظرة عامة</h2>
+                <div class="stats-grid">
+                    <div class="stat-card" style="background:var(--blue)"><span class="label">الرصيد</span><div class="value">ريال ${stats.balance}</div></div>
+                    <div class="stat-card" style="background:var(--green)"><span class="label">المقبوضات</span><div class="value">ريال ${stats.income}</div></div>
+                    <div class="stat-card" style="background:var(--red)"><span class="label">المصروفات</span><div class="value">ريال ${stats.expenses}</div></div>
+                    <div class="stat-card" style="background:var(--orange)"><span class="label">الديون</span><div class="value">ريال ${stats.debts}</div></div>
+                </div>
+                <div class="data-card">
+                    <div class="table-header">
+                        <div style="font-weight:bold;"><i class="fas fa-list"></i> دليل المشتركين</div>
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" placeholder="بحث باسم المشترك..." onkeyup="searchTable(this.value)">
+                        </div>
+                    </div>
+                    <table id="custTable">
+                        <thead><tr><th>م</th><th>الاسم</th><th>الهاتف</th><th>الرصيد الحالي</th></tr></thead>
+                        <tbody>`;
+            customers.forEach((c, i) => {
+                html += `<tr>
+                    <td>${i+1}</td>
+                    <td>${c.full_name}</td>
+                    <td>${c.phone}</td>
+                    <td><span class="${c.wallet_balance < 0 ? 'badge-red' : ''}">${c.wallet_balance}</span></td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            document.getElementById('content').innerHTML = html;
+        }
+
+        function searchTable(val) {
+            let filter = val.toLowerCase();
+            let rows = document.querySelectorAll("#custTable tbody tr");
+            rows.forEach(r => {
+                r.style.display = r.innerText.toLowerCase().includes(filter) ? "" : "none";
+            });
+        }
 
         window.onload = loadDashboard;
     </script>
