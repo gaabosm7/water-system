@@ -1,4 +1,3 @@
-# main.py
 import os
 import shutil
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form
@@ -6,6 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, text
+from sqlalchemy.engine import URL
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
@@ -13,9 +13,16 @@ from datetime import datetime
 from typing import Optional
 
 # ====================================================
-# 1. إعدادات قاعدة البيانات (متصلة بـ Supabase ☁️)
+# 1. إعدادات قاعدة البيانات (Supabase ☁️)
 # ====================================================
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres.lkefznnqjrktulahptfy:K4-!_jy#vkV+U9*@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres"
+SQLALCHEMY_DATABASE_URL = URL.create(
+    drivername="postgresql",
+    username="postgres.lkefznnqjrktulahptfy",
+    password="K4-!_jy#vkV+U9*",
+    host="aws-0-ap-southeast-1.pooler.supabase.com",
+    port=6543,
+    database="postgres"
+)
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -46,7 +53,9 @@ class Reading(Base):
     meter_id = Column(Integer, ForeignKey("meters.id"))
     previous_reading = Column(Integer)
     current_reading = Column(Integer)
-    
+    note = Column(String, nullable=True) # حقل الملاحظات
+    date = Column(DateTime, default=datetime.now)
+
 class Invoice(Base):
     __tablename__ = "invoices"
     id = Column(Integer, primary_key=True, index=True)
@@ -70,20 +79,18 @@ class Expense(Base):
     image_path = Column(String, nullable=True)
     expense_date = Column(DateTime, default=datetime.now)
 
-# 💡 تم إضافة هذا الجدول لحل مشكلة الإعدادات وسعر الوحدة
 class SystemSetting(Base):
     __tablename__ = "system_settings"
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String, unique=True)
     value = Column(String)
 
-# هذا السطر يقوم بإنشاء كل الجداول السابقة في Supabase فوراً
 Base.metadata.create_all(bind=engine)
 
 # ====================================================
-# 3. التطبيق
+# 3. التطبيق والإعدادات
 # ====================================================
-app = FastAPI(title="نظام مياه القرية")
+app = FastAPI(title="نظام مياه الجعودية")
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
@@ -99,7 +106,7 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# Pydantic Models
+# Pydantic Schemas
 class CustomerCreate(BaseModel):
     full_name: str
     phone: str
@@ -107,11 +114,10 @@ class MeterCreate(BaseModel):
     serial_number: str
     customer_id: int
     last_reading: int = 0
-class MeterUpdate(BaseModel):
-    last_reading: int
 class ReadingInput(BaseModel):
     meter_id: int
     current_reading: int
+    note: Optional[str] = None
 class PaymentInput(BaseModel):
     customer_id: int
     amount: float
@@ -140,59 +146,22 @@ def create_meter(item: MeterCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "تم تركيب العداد"}
 
-@app.put("/meters/{meter_id}")
-def update_meter(meter_id: int, item: MeterUpdate, db: Session = Depends(get_db)):
-    meter = db.query(Meter).filter(Meter.id == meter_id).first()
-    if not meter: raise HTTPException(status_code=404, detail="العداد غير موجود")
-    
-    old_reading = meter.last_reading
-    new_reading = item.last_reading
-    diff_units = new_reading - old_reading
-    
-    price_setting = db.execute(text("SELECT value FROM system_settings WHERE key='unit_price'")).fetchone()
-    unit_price = float(price_setting[0]) if price_setting else 100.0
-    amount_diff = diff_units * unit_price
-    
-    meter.last_reading = new_reading
-    
-    customer = db.query(Customer).filter(Customer.id == meter.customer_id).first()
-    customer.wallet_balance -= amount_diff
-    
-    db.commit()
-    return {"message": "تم تعديل القراءة وتصحيح الرصيد"}
-
-@app.delete("/meters/{meter_id}")
-def delete_meter(meter_id: int, db: Session = Depends(get_db)):
-    meter = db.query(Meter).filter(Meter.id == meter_id).first()
-    if not meter: raise HTTPException(status_code=404, detail="العداد غير موجود")
-    db.delete(meter)
-    db.commit()
-    return {"message": "تم حذف العداد"}
-
-@app.put("/meters/{meter_id}/reset")
-def reset_meter(meter_id: int, db: Session = Depends(get_db)):
-    meter = db.query(Meter).filter(Meter.id == meter_id).first()
-    if not meter: raise HTTPException(status_code=404, detail="العداد غير موجود")
-    meter.last_reading = 0
-    db.commit()
-    return {"message": "تم تصفير العداد"}
-
-@app.get("/customer_meter/{customer_id}")
-def get_customer_meter(customer_id: int, db: Session = Depends(get_db)):
-    meter = db.query(Meter).filter(Meter.customer_id == customer_id).first()
-    if not meter: return {"status": "no_meter"}
-    return {"status": "found", "meter_id": meter.id, "serial": meter.serial_number}
-
+# دالة إضافة القراءة مع منع النقرة المزدوجة والملاحظات
 @app.post("/readings/")
 def add_reading(item: ReadingInput, db: Session = Depends(get_db)):
     meter = db.query(Meter).filter(Meter.id == item.meter_id).first()
     if not meter: raise HTTPException(status_code=404, detail="العداد غير موجود")
     
-    if item.current_reading < meter.last_reading:
-        raise HTTPException(status_code=400, detail=f"خطأ: القراءة الحالية ({item.current_reading}) أقل من السابقة ({meter.last_reading})")
+    if item.current_reading <= meter.last_reading:
+        raise HTTPException(status_code=400, detail=f"خطأ: القراءة الحالية ({item.current_reading}) يجب أن تكون أكبر من السابقة ({meter.last_reading})")
 
     saved_previous_reading = meter.last_reading
-    new_reading = Reading(meter_id=item.meter_id, previous_reading=saved_previous_reading, current_reading=item.current_reading)
+    new_reading = Reading(
+        meter_id=item.meter_id, 
+        previous_reading=saved_previous_reading, 
+        current_reading=item.current_reading,
+        note=item.note
+    )
     db.add(new_reading)
     db.commit()
     db.refresh(new_reading)
@@ -204,89 +173,45 @@ def add_reading(item: ReadingInput, db: Session = Depends(get_db)):
 
     new_invoice = Invoice(customer_id=meter.customer_id, reading_id=new_reading.id, amount=total_amount)
     db.add(new_invoice)
-    db.commit()
-
-    # 💡 تم إصلاح الخصم من الرصيد هنا
+    
     customer = db.query(Customer).filter(Customer.id == meter.customer_id).first()
     customer.wallet_balance -= total_amount
-    db.commit()
-    db.refresh(customer)
+    meter.last_reading = item.current_reading # تحديث حالة العداد
     
-    return {"message": "تمت العملية", "units": consumption, "cost": total_amount, "new_balance": customer.wallet_balance}
+    db.commit()
+    return {"message": "تم تسجيل القراءة بنجاح"}
 
 @app.post("/payments/")
 def make_payment(item: PaymentInput, db: Session = Depends(get_db)):
     new_payment = Payment(customer_id=item.customer_id, amount=item.amount)
     db.add(new_payment)
-    db.commit()
-    
-    # 💡 تم إصلاح الإضافة للرصيد هنا
     customer = db.query(Customer).filter(Customer.id == item.customer_id).first()
     customer.wallet_balance += item.amount
     db.commit()
-    db.refresh(customer)
-    
-    return {"message": "تم السداد", "new_balance": customer.wallet_balance}
+    return {"message": "تم السداد بنجاح"}
 
-@app.post("/expenses/")
-async def create_expense(
-    title: str = Form(...),
-    amount: float = Form(...),
-    file: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
-):
-    image_path = None
-    if file and file.filename:
-        file_location = f"uploads/{file.filename}"
-        with open(file_location, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        image_path = file_location
-
-    new_expense = Expense(title=title, amount=amount, image_path=image_path)
-    db.add(new_expense)
-    db.commit()
-    return {"message": "تم حفظ المصروف"}
-
-@app.delete("/expenses/{expense_id}")
-def delete_expense(expense_id: int, db: Session = Depends(get_db)):
-    expense = db.query(Expense).filter(Expense.id == expense_id).first()
-    if not expense: raise HTTPException(status_code=404, detail="المصروف غير موجود")
-    if expense.image_path and os.path.exists(expense.image_path):
-        try: os.remove(expense.image_path)
-        except: pass
-    db.delete(expense)
-    db.commit()
-    return {"message": "تم الحذف"}
-
-@app.put("/expenses/{expense_id}")
-async def update_expense(
-    expense_id: int,
-    title: str = Form(...),
-    amount: float = Form(...),
-    file: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
-):
-    expense = db.query(Expense).filter(Expense.id == expense_id).first()
-    if not expense: raise HTTPException(status_code=404, detail="المصروف غير موجود")
-    
-    expense.title = title
-    expense.amount = amount
-
-    if file and file.filename:
-        if expense.image_path and os.path.exists(expense.image_path):
-            try: os.remove(expense.image_path)
-            except: pass  
-        file_location = f"uploads/{file.filename}"
-        with open(file_location, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        expense.image_path = file_location
-
-    db.commit()
-    return {"message": "تم التعديل"}
-
-@app.get("/expenses/")
-def get_expenses(db: Session = Depends(get_db)):
-    return db.query(Expense).order_by(Expense.expense_date.desc()).all()
+@app.get("/users_report/")
+def get_users_report(db: Session = Depends(get_db)):
+    sql = text("""
+        SELECT 
+            c.full_name, 
+            m.serial_number, 
+            COALESCE(r.previous_reading, 0) as prev_r, 
+            COALESCE(r.current_reading, 0) as curr_r,
+            COALESCE(r.current_reading - r.previous_reading, 0) as consumption,
+            COALESCE(i.amount, 0) as last_amount,
+            r.note,
+            c.wallet_balance
+        FROM customers c
+        JOIN meters m ON c.id = m.customer_id
+        LEFT JOIN (
+            SELECT DISTINCT ON (meter_id) * FROM readings 
+            ORDER BY meter_id, id DESC
+        ) r ON r.meter_id = m.id
+        LEFT JOIN invoices i ON i.reading_id = r.id
+        ORDER BY c.id ASC
+    """)
+    return [dict(row) for row in db.execute(sql).mappings()]
 
 @app.get("/dashboard/")
 def get_dashboard(db: Session = Depends(get_db)):
@@ -302,3 +227,20 @@ def get_customers(db: Session = Depends(get_db)):
 @app.get("/meters/")
 def get_meters(db: Session = Depends(get_db)):
     return db.query(Meter).order_by(Meter.id).all()
+
+# دوال المصاريف
+@app.post("/expenses/")
+async def create_expense(title: str = Form(...), amount: float = Form(...), file: Optional[UploadFile] = File(None), db: Session = Depends(get_db)):
+    image_path = None
+    if file and file.filename:
+        file_location = f"uploads/{file.filename}"
+        with open(file_location, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        image_path = file_location
+    new_expense = Expense(title=title, amount=amount, image_path=image_path)
+    db.add(new_expense)
+    db.commit()
+    return {"message": "تم الحفظ"}
+
+@app.get("/expenses/")
+def get_expenses(db: Session = Depends(get_db)):
+    return db.query(Expense).order_by(Expense.expense_date.desc()).all()
