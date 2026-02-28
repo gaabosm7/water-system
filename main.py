@@ -11,15 +11,14 @@ from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-
 # ====================================================
-# 1. إعدادات قاعدة البيانات (Supabase ☁️)
+# 1. إعدادات قاعدة البيانات (الرابط الجديد ☁️)
 # ====================================================
 SQLALCHEMY_DATABASE_URL = URL.create(
     drivername="postgresql",
     username="postgres.lkefznnqjrktulahptfy",
-    password="K4-!_jy#vkV+U9*",
-    host="aws-0-ap-southeast-1.pooler.supabase.com",
+    password="K4-!_jy#vkV+U9*", 
+    host="aws-1-ap-northeast-1.pooler.supabase.com", # الرابط الجديد هنا
     port=6543,
     database="postgres"
 )
@@ -244,3 +243,4 @@ async def create_expense(title: str = Form(...), amount: float = Form(...), file
 @app.get("/expenses/")
 def get_expenses(db: Session = Depends(get_db)):
     return db.query(Expense).order_by(Expense.expense_date.desc()).all()
+
