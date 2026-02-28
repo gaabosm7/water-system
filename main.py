@@ -13,8 +13,7 @@ from datetime import datetime
 from typing import Optional
 
 # ====================================================
-# 1. إعدادات قاعدة البيانات (الرابط الجديد ☁️)
-# استخدمنا URL.create لضمان قراءة الرموز (#, !) في كلمة السر
+# إعدادات قاعدة البيانات - الرابط المطلوب
 # ====================================================
 SQLALCHEMY_DATABASE_URL = URL.create(
     drivername="postgresql",
@@ -32,7 +31,7 @@ Base = declarative_base()
 os.makedirs("uploads", exist_ok=True)
 
 # ====================================================
-# 2. الجداول (Models)
+# الجداول (Models)
 # ====================================================
 class Customer(Base):
     __tablename__ = "customers"
@@ -79,16 +78,10 @@ class Expense(Base):
     amount = Column(Float)
     expense_date = Column(DateTime, default=datetime.now)
 
-class SystemSetting(Base):
-    __tablename__ = "system_settings"
-    id = Column(Integer, primary_key=True, index=True)
-    key = Column(String, unique=True)
-    value = Column(String)
-
 Base.metadata.create_all(bind=engine)
 
 # ====================================================
-# 3. التطبيق والإعدادات
+# التطبيق والعمليات
 # ====================================================
 app = FastAPI()
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -99,7 +92,6 @@ def get_db():
     try: yield db
     finally: db.close()
 
-# Schemas
 class ReadingInput(BaseModel):
     meter_id: int
     current_reading: int
@@ -109,30 +101,35 @@ class ReadingInput(BaseModel):
 async def read_index():
     return FileResponse('index.html')
 
-# ====================================================
-# 4. العمليات (APIs)
-# ====================================================
-
 @app.get("/dashboard/")
 def get_dashboard(db: Session = Depends(get_db)):
-    payments = db.execute(text("SELECT COALESCE(SUM(amount), 0) FROM payments")).fetchone()[0]
-    expenses = db.execute(text("SELECT COALESCE(SUM(amount), 0) FROM expenses")).fetchone()[0]
+    income = db.execute(text("SELECT COALESCE(SUM(amount), 0) FROM payments")).fetchone()[0]
+    exp = db.execute(text("SELECT COALESCE(SUM(amount), 0) FROM expenses")).fetchone()[0]
     debts = db.execute(text("SELECT COALESCE(SUM(ABS(wallet_balance)), 0) FROM customers WHERE wallet_balance < 0")).fetchone()[0]
-    return {
-        "balance": payments - expenses,
-        "income": payments,
-        "expenses": expenses,
-        "debts": debts
-    }
+    return {"balance": income - exp, "income": income, "expenses": exp, "debts": debts}
 
 @app.get("/customers/")
 def get_customers(db: Session = Depends(get_db)):
     return db.query(Customer).order_by(Customer.id).all()
 
+@app.get("/users_report/")
+def get_users_report(db: Session = Depends(get_db)):
+    sql = text("""
+        SELECT c.full_name, m.serial_number, m.id as meter_id,
+        COALESCE(r.previous_reading, 0) as prev_r, 
+        COALESCE(r.current_reading, 0) as curr_r,
+        COALESCE(i.amount, 0) as last_amount,
+        c.wallet_balance
+        FROM customers c
+        JOIN meters m ON c.id = m.customer_id
+        LEFT JOIN (SELECT DISTINCT ON (meter_id) * FROM readings ORDER BY meter_id, id DESC) r ON r.meter_id = m.id
+        LEFT JOIN invoices i ON i.reading_id = r.id
+    """)
+    return [dict(row) for row in db.execute(sql).mappings()]
+
 @app.post("/readings/")
 def add_reading(item: ReadingInput, db: Session = Depends(get_db)):
     meter = db.query(Meter).filter(Meter.id == item.meter_id).first()
-    if not meter: raise HTTPException(status_code=404, detail="العداد غير موجود")
     if item.current_reading <= meter.last_reading:
         raise HTTPException(status_code=400, detail="القراءة يجب أن تكون أكبر من السابقة")
     
@@ -141,15 +138,14 @@ def add_reading(item: ReadingInput, db: Session = Depends(get_db)):
     db.add(new_r)
     db.commit()
     db.refresh(new_r)
-
-    price_setting = db.execute(text("SELECT value FROM system_settings WHERE key='unit_price'")).fetchone()
-    u_price = float(price_setting[0]) if price_setting else 100.0
-    amt = (item.current_reading - prev) * u_price
-
+    
+    # حساب المبلغ (سعر الوحدة الافتراضي 100)
+    amt = (item.current_reading - prev) * 100 
     inv = Invoice(customer_id=meter.customer_id, reading_id=new_r.id, amount=amt)
     db.add(inv)
+    
     cust = db.query(Customer).filter(Customer.id == meter.customer_id).first()
     cust.wallet_balance -= amt
     meter.last_reading = item.current_reading
     db.commit()
-    return {"message": "تمت العملية بنجاح"}
+    return {"message": "تمت العملية"}
